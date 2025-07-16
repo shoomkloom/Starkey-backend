@@ -29,14 +29,16 @@ app.post('/api/chat', async (req, res) => {
 
     let fileObjects = [];
     try {
-        await collection.find().toArray()
+        const db = await connectToMongo();
+        const collection = db.collection('files');
+        fileObjects = (await collection.find().toArray())
         .filter(file => file.openAiFileId) // Only include if openAiFileId exists
         .map(file => ({
             filename: file.filename,
             openAiFileId: file.openAiFileId
         }));
         if (fileObjects.length === 0) {
-            return res.status(404).send({ error: `No Files found ${company}` });
+            console.error('No Files found');
         }
     }
     catch (error) {
@@ -45,7 +47,7 @@ app.post('/api/chat', async (req, res) => {
     }
     
     try {
-        const reply = await agentResponse.chat(message, fileIds);
+        const reply = await agentResponse.run(message, fileObjects);
         res.send(reply);
     } 
     catch (err) {
@@ -76,7 +78,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         // Upload file to OpenAI
         let openAiFileId = null;
         try {
-            openAiFileId = await agentManager.uploadFileToOpenAI(req.file, );
+            openAiFileId = await agentResponse.uploadFileToOpenAI(req.file);
         } catch (err) {
             console.error('OpenAI upload error:', err);
             return res.status(500).json({ error: 'Failed to upload file to OpenAI', details: err.message });

@@ -66,5 +66,45 @@ async function processAndStoreUrl(url, collection) {
     console.log(`Embedded and stored ${chunks.length} chunks from ${url}`);
 }
 
+function cosineSimilarity(a, b) {
+    const dot = a.reduce((sum, val, i) => sum + val * b[i], 0);
+    const normA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
+    const normB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
+    return dot / (normA * normB);
+}
+
+async function searchSimilarClientSide(queryText, dbCollection, topN = 5) {
+    const queryEmbedding = (await openai.embeddings.create({
+        model: "text-embedding-3-small",
+        input: [queryText]
+    })).data[0].embedding;
+
+    // Fetch all site docs (or filter by URL, etc.)
+    const allDocs = await dbCollection.find({}).toArray();
+
+    let allChunks = [];
+    for (const doc of allDocs) {
+        for (const chunk of doc.chunks) {
+            allChunks.push({
+                text: chunk.text,
+                embedding: chunk.embedding,
+                url: doc.url,
+                title: doc.title
+            });
+        }
+    }
+
+    // Score chunks by cosine similarity
+    const scoredChunks = allChunks.map(chunk => ({
+        ...chunk,
+        score: cosineSimilarity(queryEmbedding, chunk.embedding)
+    }));
+
+    // Sort and return topN
+    scoredChunks.sort((a, b) => b.score - a.score);
+    return scoredChunks.slice(0, topN);
+}
+
+
 // Export the functions
-module.exports = { processAndStoreUrl };
+module.exports = { processAndStoreUrl, searchSimilarClientSide };
