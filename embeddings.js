@@ -73,7 +73,7 @@ function cosineSimilarity(a, b) {
     return dot / (normA * normB);
 }
 
-async function searchSimilarClientSide(queryText, dbCollection, topN = 5) {
+async function searchSimilarClientSide(queryText, dbCollection, numTopLinks) {
     const queryEmbedding = (await openai.embeddings.create({
         model: "text-embedding-3-small",
         input: [queryText]
@@ -102,7 +102,7 @@ async function searchSimilarClientSide(queryText, dbCollection, topN = 5) {
 
     // Sort and return topN
     scoredChunks.sort((a, b) => b.score - a.score);
-    return scoredChunks.slice(0, topN);
+    return scoredChunks.slice(0, numTopLinks);
 }
 
 

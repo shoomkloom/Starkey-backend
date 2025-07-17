@@ -7,14 +7,12 @@ const { connectToMongo } = require('./db');
 const fs = require('fs');
 const path = require('path');
 const { processAndStoreUrl } = require('./embeddings');
+const sysParams = require('./sysparams');
 
 const app = express();
-
 const upload = multer({ storage: multer.memoryStorage() });
-
 app.use(cors());
 app.use(express.json());
-
 const agentResponse = new AgentResponse();
 
 app.get('/', (req, res) => {
@@ -22,6 +20,28 @@ app.get('/', (req, res) => {
     <h2>Starkey Server</h2>
     <h1>Welcome!</h1>
   `);
+});
+
+app.post('/api/sysparams', async (req, res) => {
+    const {
+        openaiKey,
+        modelName,
+        historyLength,
+        temperature,
+        numTopFiles,
+        numTopLilnks
+    } = req.body;
+
+    sysParams.setParams({
+        openaiKey,
+        modelName,
+        historyLength,
+        temperature,
+        numTopFiles,
+        numTopLilnks
+    });
+
+    res.status(200).json({ message: 'System parameters updated successfully.' });
 });
 
 app.post('/api/chat', async (req, res) => {
@@ -62,16 +82,12 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     }
 
     try {
-        // Ensure folder exists
+        // Save file to a local folder before uploading to OpenAI because it accepts only file streams
         const folderPath = path.join(__dirname, 'filedata');
         if (!fs.existsSync(folderPath)) {
             fs.mkdirSync(folderPath);
         }
-
-        // Define file path
         const localFilePath = path.join(folderPath, req.file.originalname);
-
-        // Save file to disk
         fs.writeFileSync(localFilePath, req.file.buffer);
         console.log(`File saved locally to ${localFilePath}`);
 

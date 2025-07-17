@@ -5,10 +5,12 @@ const { OpenAI } = require('openai');
 require('dotenv').config({ quiet: true });
 const { searchSimilarClientSide } = require('./embeddings');
 const { connectToMongo } = require('./db');
+const { getParams } = require('./sysparams');
+const { openaiKey, historyLength, modelName, temperature, numTopFiles, numTopLinks } = getParams();
 
 class AgentResponse {
     constructor() {
-        this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        this.openai = new OpenAI({ apiKey: openaiKey });
         this.vectorStoreId = null;
         this.messageHistory = [];
 
@@ -61,7 +63,7 @@ class AgentResponse {
         this.syncVectorStoreWithFileIds(fileIds);
 
         this.messageHistory.push({ role: 'user', content: userPrompt });
-        if(this.messageHistory.length > 10) {
+        if(this.messageHistory.length > historyLength) {
             this.messageHistory.shift(); // Keep the last 10 messages
         }
         console.info("--> YOU:", userPrompt);
@@ -69,7 +71,7 @@ class AgentResponse {
         // Search for similar chunks in the vector store
         const db = await connectToMongo();
         const collection = db.collection('links');
-        const retrievedChunks = await searchSimilarClientSide(userPrompt, collection);
+        const retrievedChunks = await searchSimilarClientSide(userPrompt, collection, numTopLinks);
         const webContext = retrievedChunks.map(c => `Source: ${c.title} (${c.url})\nText: ${c.text}`).join('\n---\n');
 
         //Construct messages
@@ -83,18 +85,18 @@ class AgentResponse {
 
         //Call OpenAI agent with both custom context and file_search tool
         const response = await this.openai.responses.create({
-            model: "gpt-4o",
+            model: modelName,
             instructions: this.systemPrompt, // optional; already included in messages
             tools: [
                 {
                     type: "file_search",
                     vector_store_ids: [this.vectorStoreId],
-                    max_num_results: 20
+                    max_num_results: numTopFiles
                 }
             ],
             include: ["file_search_call.results"],
             input: inputMessages,
-            temperature: 0.2
+            temperature: temperature
         });
   
         // Retrieve the latest message
