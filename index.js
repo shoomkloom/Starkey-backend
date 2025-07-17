@@ -9,11 +9,12 @@ const path = require('path');
 const { processAndStoreUrl } = require('./embeddings');
 const sysParams = require('./sysparams');
 
+globalThis.File = require('node:buffer').File; //Required by OpenAI SDK for file handling
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 app.use(cors());
 app.use(express.json());
-const agentResponse = new AgentResponse();
+let agentResponse = null;
 
 app.get('/', (req, res) => {
   res.send(`
@@ -29,7 +30,7 @@ app.post('/api/sysparams', async (req, res) => {
         historyLength,
         temperature,
         numTopFiles,
-        numTopLilnks
+        numTopLinks
     } = req.body;
 
     sysParams.setParams({
@@ -38,8 +39,11 @@ app.post('/api/sysparams', async (req, res) => {
         historyLength,
         temperature,
         numTopFiles,
-        numTopLilnks
+        numTopLinks
     });
+
+    //Apply new openai Key
+    agentResponse = new AgentResponse();
 
     res.status(200).json({ message: 'System parameters updated successfully.' });
 });
@@ -58,7 +62,7 @@ app.post('/api/chat', async (req, res) => {
             openAiFileId: file.openAiFileId
         }));
         if (fileObjects.length === 0) {
-            console.error('No Files found');
+            console.warn('No Files found');
         }
     }
     catch (error) {
@@ -122,7 +126,7 @@ app.post('/api/link', async (req, res) => {
     console.debug(`POST /api/link invoked with the url: ${req.body.link}`);
     try{
         await processAndStoreUrl(req.body.link, 'links');
-        res.status(200);
+        res.status(200).json({ message: 'Link saved' });
     }
     catch (err) {
         console.error('api/link error:', err);
