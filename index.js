@@ -81,50 +81,28 @@ app.post('/api/chat', async (req, res) => {
 
 app.post('/api/upload', upload.single('file'), async (req, res) => {
     console.debug(`POST /api/upload invoked with the file: ${req.file.originalname}`);
-    if (req.file.size > 20 * 1024 * 1024) {
-        return res.status(400).json({ error: 'File exceeds OpenAI 20MB upload limit.' });
-    }
-
+    let localFilePath = '';
     try {
-        // Save file to a local folder before uploading to OpenAI because it accepts only file streams
-        const folderPath = path.join(__dirname, 'filedata');
-        if (!fs.existsSync(folderPath)) {
-            fs.mkdirSync(folderPath);
-        }
-        const localFilePath = path.join(folderPath, req.file.originalname);
-        fs.writeFileSync(localFilePath, req.file.buffer);
-        console.log(`File saved locally to ${localFilePath}`);
-
-        // Upload file to OpenAI
-        let openAiFileId = null;
-        try {
-            openAiFileId = await agentResponse.uploadFileToOpenAI(req.file);
-        } catch (err) {
-            console.error('OpenAI upload error:', err);
-            return res.status(500).json({ error: 'Failed to upload file to OpenAI', details: err.message });
+        if (req.file.size > 20 * 1024 * 1024) {
+            return res.status(400).json({ error: 'File exceeds OpenAI 20MB upload limit.' });
         }
 
-        // Save metadata in MongoDB
-        const db = await connectToMongo();
-        const collection = db.collection('files');
-        const metadata = {
-            filename: req.file.originalname,
-            savePath: localFilePath,
-            openAiFileId: openAiFileId
-        };
-        await collection.insertOne(metadata);
-
-        res.status(200).json({ message: 'Uploaded & saved', path: localFilePath });
+        // Save file and upload to OpenAI
+        localFilePath = await agentResponse.processFile(req.file);
     } 
     catch (err) {
         console.error('Upload error:', err);
         res.status(500).json({ error: 'Upload failed', details: err.message });
     }
+
+    res.status(200).json({ message: 'Uploaded & saved', path: localFilePath });
 });
 
 app.post('/api/link', async (req, res) => {
     console.debug(`POST /api/link invoked with the url: ${req.body.link}`);
     try{
+        //@@const differences = await processAndStoreUrl(req.body.link, 'links');
+        //@@res.status(200).json({ message: 'Link processing complete', differences: differences });
         await processAndStoreUrl(req.body.link, 'links');
         res.status(200).json({ message: 'Link saved' });
     }

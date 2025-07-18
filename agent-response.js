@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { OpenAI } = require('openai');
 require('dotenv').config({ quiet: true });
 const { searchSimilarClientSide } = require('./embeddings');
@@ -30,17 +29,26 @@ class AgentResponse {
                                 - "source": the file name or web page title where you found the excerpt. `;
     }
 
-    async uploadFileToOpenAI(file) {
-        console.debug(`uploadFileToOpenAI(.) involed.`);
+    async processFile(file) {
+        console.debug(`processFile(.) involed.`);
         if(!this.vectorStoreId) {
             const vectorStore = await this.openai.vectorStores.create({name: "Starkey",});
             this.vectorStoreId = vectorStore.id;
         }
 
-        const tempPath = path.join(os.tmpdir(), file.originalname);
-        fs.writeFileSync(tempPath, file.buffer); // write the file content to disk
+        // Save file to a local folder
+        // This is just for demonstration purposes, in production you would use a cloud storage service
+        const folderPath = path.join(__dirname, 'filedata');
+        if (!fs.existsSync(folderPath)) {
+            fs.mkdirSync(folderPath);
+        }
+        const localFilePath = path.join(folderPath, file.originalname);
+        fs.writeFileSync(localFilePath, file.buffer);
+        console.log(`File saved locally to ${localFilePath}`);
+
+        // Upload file to OpenAI
         const uploadedFile = await this.openai.files.create({
-            file: fs.createReadStream(tempPath),
+            file: fs.createReadStream(localFilePath),
             purpose: "assistants",
         });
 
@@ -49,7 +57,23 @@ class AgentResponse {
             { file_id: uploadedFile.id }
         );
 
-        return uploadedFile.id; // return the OpenAI file ID
+        // Save metadata in MongoDB
+        const db = await connectToMongo();
+        const collection = db.collection('files');
+        const existingDoc = await collection.findOne({ filename: file.originalname });
+        if(!existingDoc) {
+            const metadata = {
+                filename: file.originalname,
+                savePath: localFilePath,
+                openAiFileId: uploadedFile.id
+            };
+            await collection.insertOne(metadata);
+        }
+        else{
+            console.log(`File already saved locally to ${localFilePath}`);
+        }
+
+        return localFilePath;
     }
 
     async run(userPrompt, fileObjects) {
