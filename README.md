@@ -1,1 +1,2 @@
-This is the Backend for the Starkey-frontend
+# Backend
+This is the Node.JS Backend for the Starkey-frontend
