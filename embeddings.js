@@ -117,7 +117,7 @@ async function compareExisting(url, bodyText, collection) {
 async function processUrl(url, collectionName) {
     const db = await connectToMongo();
     const dbCollection = db.collection(collectionName);
-    processAndStoreUrl(url, dbCollection);
+    await processAndStoreUrl(url, dbCollection);
 }
 
 async function processAllDiffs() {
