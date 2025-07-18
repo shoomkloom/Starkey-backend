@@ -24,6 +24,7 @@ app.get('/', (req, res) => {
 });
 
 app.post('/api/sysparams', async (req, res) => {
+    console.debug(`POST /api/sysparams invoked.`);
     const {
         openaiKey,
         modelName,
@@ -48,6 +49,7 @@ app.post('/api/sysparams', async (req, res) => {
 });
 
 app.post('/api/chat', async (req, res) => {
+    console.debug(`POST /api/chat invoked.`);
     const message = req.body.message;
     
     try {
