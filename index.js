@@ -101,10 +101,8 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 app.post('/api/link', async (req, res) => {
     console.debug(`POST /api/link invoked with the url: ${req.body.link}`);
     try{
-        //@@const differences = await processAndStoreUrl(req.body.link, 'links');
-        //@@res.status(200).json({ message: 'Link processing complete', differences: differences });
-        await processAndStoreUrl(req.body.link, 'links');
-        res.status(200).json({ message: 'Link saved' });
+        const differences = await processAndStoreUrl(req.body.link, 'links');
+        res.status(200).json({ message: 'Link processing complete', differences: differences });
     }
     catch (err) {
         console.error('api/link error:', err);

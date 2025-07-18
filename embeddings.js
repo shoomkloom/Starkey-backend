@@ -2,6 +2,7 @@ const puppeteer = require('puppeteer');
 const OpenAI = require('openai');
 require('dotenv').config({ quiet: true });
 const { connectToMongo } = require('./db');
+const {diffWords} = require('diff');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -43,15 +44,69 @@ async function embedChunks(chunks) {
     }));
 }
 
-async function saveSiteEmbedding({ url, title, chunkEmbeddings }, collection) {
+async function saveSiteEmbedding({ url, title, bodyText, chunkEmbeddings, _id, changes }, collection) {
     const doc = {
         url,
         title,
+        originalText: bodyText, 
         chunks: chunkEmbeddings,
+        changesOrgId: _id, 
+        changes: changes,
         createdAt: new Date()
     };
 
     await collection.insertOne(doc);
+}
+
+async function compareExisting(url, bodyText, collection) {
+    const existingDoc = await collection.findOne(
+        { url },                              // match by url
+        { sort: { createdAt: -1 } }           // sort by createdAt descending
+    );
+    if(existingDoc) {
+        // Compare with new bodyText and ignore whitespace
+        const differences = diffWords(existingDoc.originalText, bodyText, { ignoreWhitespace: true, ignoreCase: true, oneChangePerToken: true });
+
+        // Filter the differences to show only changes
+        const changes = [];
+        let currentChange = null;
+
+        for (const part of differences) {
+            if (part.added || part.removed) {
+                const type = part.added ? 'added' : 'removed';
+                if (currentChange && currentChange.type === type) {
+                    currentChange.text += ' ' + part.value.trim();
+                } 
+                else {
+                    if (currentChange) {
+                        currentChange.text = currentChange.text.trim();
+                        changes.push(currentChange);
+                    }
+                    currentChange = {
+                        type: type,
+                        text: part.value
+                    };
+                }
+            } 
+            else {
+                // End of a change block
+                if (currentChange) {
+                    changes.push(currentChange);
+                    currentChange = null;
+                }
+            }
+        }
+
+        // Push any remaining change
+        if (currentChange) {
+            changes.push(currentChange);
+        }
+
+        return { _id: existingDoc._id, changes };
+    } 
+    else {
+        return { _id: null, changes: [] };
+    }
 }
 
 async function processAndStoreUrl(url, collection) {
@@ -61,9 +116,16 @@ async function processAndStoreUrl(url, collection) {
 
     const db = await connectToMongo();
     const dbCollection = db.collection(collection);
-    await saveSiteEmbedding({ url, title, chunkEmbeddings }, dbCollection);
+    const { _id, changes } = await compareExisting(url, bodyText, dbCollection);
+    if (!_id || (changes && changes.length > 0)) {
+        await saveSiteEmbedding({ url, title, bodyText, chunkEmbeddings, _id, changes }, dbCollection);
+        console.log(`Embedded and stored ${chunks.length} chunks from ${url}`);
+    } 
+    else {
+        console.log(`No significant changes found for ${url}. Skipping storage.`);
+    }
 
-    console.log(`Embedded and stored ${chunks.length} chunks from ${url}`);
+    return changes;
 }
 
 function cosineSimilarity(a, b) {
