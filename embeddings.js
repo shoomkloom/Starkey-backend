@@ -1,10 +1,15 @@
 const puppeteer = require('puppeteer');
-const OpenAI = require('openai');
+const { OpenAI } = require('openai');
 require('dotenv').config({ quiet: true });
 const { connectToMongo } = require('./db');
 const {diffWords} = require('diff');
+const { getParams } = require('./sysparams');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let responseOpenaiClient = null;
+
+function setEmbeddingsOpenAIClient(openaiClient) {
+    responseOpenaiClient = openaiClient;
+}
 
 async function fetchWebpageContent(url) {
     const browser = await puppeteer.launch({ headless: 'new' });
@@ -33,7 +38,7 @@ function chunkText(text, maxWords = 200) {
 }
 
 async function embedChunks(chunks) {
-    const response = await openai.embeddings.create({
+    const response = await responseOpenaiClient.embeddings.create({
         model: "text-embedding-3-small",
         input: chunks
     });
@@ -109,13 +114,31 @@ async function compareExisting(url, bodyText, collection) {
     }
 }
 
-async function processAndStoreUrl(url, collection) {
+async function processUrl(url, collectionName) {
+    const db = await connectToMongo();
+    const dbCollection = db.collection(collectionName);
+    processAndStoreUrl(url, dbCollection);
+}
+
+async function processAllDiffs() {
+    const db = await connectToMongo();
+    const dbCollection = db.collection('links');
+    const allLinks = await dbCollection.find({}).toArray();
+    allLinks.forEach(async link => {
+        try{
+            await processAndStoreUrl(link.url, dbCollection);
+        }
+        catch (err) {
+            console.error(`Error processing link ${link.url}:`, err);
+        }
+    });
+}
+
+async function processAndStoreUrl(url, dbCollection) {
     const { title, bodyText } = await fetchWebpageContent(url);
     const chunks = chunkText(bodyText);
     const chunkEmbeddings = await embedChunks(chunks);
-
-    const db = await connectToMongo();
-    const dbCollection = db.collection(collection);
+    
     const { _id, changes } = await compareExisting(url, bodyText, dbCollection);
     if (!_id || (changes && changes.length > 0)) {
         await saveSiteEmbedding({ url, title, bodyText, chunkEmbeddings, _id, changes }, dbCollection);
@@ -128,6 +151,8 @@ async function processAndStoreUrl(url, collection) {
     return changes;
 }
 
+
+
 function cosineSimilarity(a, b) {
     const dot = a.reduce((sum, val, i) => sum + val * b[i], 0);
     const normA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
@@ -136,7 +161,9 @@ function cosineSimilarity(a, b) {
 }
 
 async function searchSimilarClientSide(queryText, dbCollection, numTopLinks) {
-    const queryEmbedding = (await openai.embeddings.create({
+    const { openaiKey } = getParams();
+    const embeddingsOpenaiClient = new OpenAI({ apiKey: openaiKey }); //We need a new OpenAI client for embeddings
+    const queryEmbedding = (await embeddingsOpenaiClient.embeddings.create({
         model: "text-embedding-3-small",
         input: [queryText]
     })).data[0].embedding;
@@ -169,4 +196,4 @@ async function searchSimilarClientSide(queryText, dbCollection, numTopLinks) {
 
 
 // Export the functions
-module.exports = { processAndStoreUrl, searchSimilarClientSide };
+module.exports = { setEmbeddingsOpenAIClient, processUrl, searchSimilarClientSide, processAllDiffs };

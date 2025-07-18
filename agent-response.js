@@ -5,11 +5,13 @@ require('dotenv').config({ quiet: true });
 const { searchSimilarClientSide } = require('./embeddings');
 const { connectToMongo } = require('./db');
 const { getParams } = require('./sysparams');
+const { setEmbeddingsOpenAIClient } = require('./embeddings');
 
 class AgentResponse {
     constructor() {
         const { openaiKey } = getParams();
         this.openai = new OpenAI({ apiKey: openaiKey });
+        setEmbeddingsOpenAIClient(this.openai);
         this.vectorStoreId = null;
         this.messageHistory = [];
 
@@ -76,8 +78,28 @@ class AgentResponse {
         return localFilePath;
     }
 
-    async run(userPrompt, fileObjects) {
+    async run(userPrompt) {
         const { historyLength, modelName, temperature, numTopFiles, numTopLinks } = getParams();
+        
+        let fileObjects = [];
+        try {
+            const db = await connectToMongo();
+            const collection = db.collection('files');
+            fileObjects = (await collection.find().toArray())
+            .filter(file => file.openAiFileId) // Only include if openAiFileId exists
+            .map(file => ({
+                filename: file.filename,
+                openAiFileId: file.openAiFileId
+            }));
+            if (fileObjects.length === 0) {
+                console.warn('No Files found');
+            }
+        }
+        catch (error) {
+            console.error('Error retrieving files:', error);
+            return res.status(404).send({ error: error });
+        }
+        
         //Add existing files to vector store
         if(!this.vectorStoreId) {
             const vectorStore = await this.openai.vectorStores.create({name: 'Starkey',});
@@ -170,7 +192,7 @@ class AgentResponse {
                 { file_id: fileId }
             );
         }
-        console.info(`Added ${toAdd.length} new files to vector store`);
+        console.info(`Added ${toAdd.length} new files to vector store from ${desiredFileIds.length} existing files.`);
     }
 }
 
