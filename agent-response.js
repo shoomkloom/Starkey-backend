@@ -9,8 +9,7 @@ const { setEmbeddingsOpenAIClient } = require('./embeddings');
 
 class AgentResponse {
     constructor() {
-        const { openaiKey } = getParams();
-        this.openai = new OpenAI({ apiKey: openaiKey });
+        this.openai = new OpenAI({ apiKey: process.env.OPENAI_KEY });
         setEmbeddingsOpenAIClient(this.openai);
         this.vectorStoreId = null;
         this.messageHistory = [];
@@ -29,6 +28,8 @@ class AgentResponse {
                             - "excerpts": an array of objects per each file found:
                                 - "excerpt": a short extract from the file that is relevant to the question on which the answer is based.
                                 - "source": the file name or web page title where you found the excerpt. `;
+
+        console.debug(`--> AgentResponse Started <<--`);
     }
 
     async processFile(file) {
@@ -113,7 +114,7 @@ class AgentResponse {
 
         this.messageHistory.push({ role: 'user', content: userPrompt });
         if(this.messageHistory.length > historyLength) {
-            this.messageHistory.shift(); // Keep the last 10 messages
+            this.messageHistory.shift(); // Keep the last historyLength messages
         }
         console.info("--> YOU:", userPrompt);
 
@@ -121,7 +122,7 @@ class AgentResponse {
         const db = await connectToMongo();
         const collection = db.collection('links');
         const retrievedChunks = await searchSimilarClientSide(userPrompt, collection, numTopLinks);
-        const webContext = retrievedChunks.map(c => `Source: ${c.title} (${c.url})\nText: ${c.text}`).join('\n---\n');
+        const webContext = retrievedChunks.map(c => `Text: ${c.text}\nSource: ${c.title} (${c.url})`).join('\n---\n');
 
         //Construct messages
         const inputMessages = [
@@ -135,7 +136,7 @@ class AgentResponse {
         //Call OpenAI agent with both custom context and file_search tool
         const response = await this.openai.responses.create({
             model: modelName,
-            instructions: this.systemPrompt, // optional; already included in messages
+            instructions: this.systemPrompt,
             tools: [
                 {
                     type: "file_search",
@@ -147,7 +148,7 @@ class AgentResponse {
             input: inputMessages,
             temperature: temperature
         });
-  
+
         // Retrieve the latest message
         const extracted = this.extractJsonText(response.output_text);
         console.info("-->> OPEN AI:", extracted);

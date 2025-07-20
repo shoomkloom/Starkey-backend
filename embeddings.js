@@ -3,8 +3,6 @@ const { OpenAI } = require('openai');
 require('dotenv').config({ quiet: true });
 const { connectToMongo } = require('./db');
 const {diffWords} = require('diff');
-const { getParams } = require('./sysparams');
-
 let responseOpenaiClient = null;
 
 function setEmbeddingsOpenAIClient(openaiClient) {
@@ -161,9 +159,8 @@ function cosineSimilarity(a, b) {
 }
 
 async function searchSimilarClientSide(queryText, dbCollection, numTopLinks) {
-    const { openaiKey } = getParams();
-    const embeddingsOpenaiClient = new OpenAI({ apiKey: openaiKey }); //We need a new OpenAI client for embeddings
-    const queryEmbedding = (await embeddingsOpenaiClient.embeddings.create({
+    const embeddingsClient = new OpenAI({ apiKey: process.env.OPENAI_KEY }); //We need a new OpenAI client for embeddings
+    const queryEmbedding = (await embeddingsClient.embeddings.create({
         model: "text-embedding-3-small",
         input: [queryText]
     })).data[0].embedding;
@@ -188,6 +185,8 @@ async function searchSimilarClientSide(queryText, dbCollection, numTopLinks) {
         ...chunk,
         score: cosineSimilarity(queryEmbedding, chunk.embedding)
     }));
+
+    console.log(`Found ${allChunks.length} chunks in ${allDocs.length} web link data sets.`);
 
     // Sort and return topN
     scoredChunks.sort((a, b) => b.score - a.score);

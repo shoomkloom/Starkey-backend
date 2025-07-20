@@ -14,7 +14,7 @@ const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 app.use(cors());
 app.use(express.json());
-let agentResponse = null;
+const agentResponse = new AgentResponse();
 
 app.get('/', (req, res) => {
   res.send(`
@@ -26,7 +26,6 @@ app.get('/', (req, res) => {
 app.post('/api/sysparams', async (req, res) => {
     console.debug(`POST /api/sysparams invoked.`);
     const {
-        openaiKey,
         modelName,
         historyLength,
         temperature,
@@ -35,15 +34,12 @@ app.post('/api/sysparams', async (req, res) => {
     } = req.body;
 
     sysParams.setParams({
-        openaiKey,
         modelName,
         historyLength,
         temperature,
         numTopFiles,
         numTopLinks
     });
-
-    agentResponse = new AgentResponse();
 
     res.status(200).json({ message: 'System parameters updated successfully.' });
 });
