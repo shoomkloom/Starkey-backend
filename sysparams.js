@@ -1,6 +1,6 @@
 // Default values
 const defaultParams = {
-  modelName: 'gpt-4o',
+  modelName: 'gpt-4.1',
   historyLength: 10,
   temperature: 0.2,
   numTopFiles: 10,
